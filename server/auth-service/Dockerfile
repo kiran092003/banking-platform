@@ -18,7 +18,9 @@ RUN ./mvnw -B -DskipTests package
 FROM eclipse-temurin:25-jre AS runtime
 
 # curl backs the Compose healthcheck against /actuator/health.
-RUN apt-get update  && apt-get install -y --no-install-recommends curl  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
 
 # Never run the service as root.
 RUN groupadd --system spring && useradd --system --gid spring spring
