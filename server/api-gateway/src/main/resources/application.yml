@@ -1,0 +1,27 @@
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+info:
+  app:
+    name: API Gateway
+    description: Entry point and security gateway for banking microservices
+    version: 1.0.0
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: Auth Service
+        url: /swagger/auth-api-docs
+
+      - name: Account Service
+        url: /swagger/account-api-docs
+
+      - name: Transaction Service
+        url: /swagger/transaction-api-docs

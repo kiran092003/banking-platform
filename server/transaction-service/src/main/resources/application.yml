@@ -1,0 +1,78 @@
+server:
+  port: 8083
+
+account-service:
+  base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
+  timeout:
+    connect: 2s
+    read: 5s
+
+internal:
+  service:
+    key: ${INTERNAL_SERVICE_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+info:
+  app:
+    name: Transaction Service
+    description: Transaction processing microservice for banking platform
+    version: 1.0.0
+
+resilience4j:
+
+  retry:
+    retryAspectOrder: 2
+
+    instances:
+
+      accountServiceRetry:
+        maxAttempts: 3
+        waitDuration: 500ms
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        retryExceptions:
+          - banking_platform.transaction_service.exception.AccountServiceUnavailableException
+
+      accountLookupRetry:
+        maxAttempts: 2
+        waitDuration: 300ms
+        retryExceptions:
+          - banking_platform.transaction_service.exception.AccountServiceUnavailableException
+
+  circuitbreaker:
+    circuitBreakerAspectOrder: 1
+
+    instances:
+
+      accountServiceCircuitBreaker:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 2
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - banking_platform.transaction_service.exception.AccountServiceUnavailableException
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 3
+      properties:
+        enable.idempotence: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html

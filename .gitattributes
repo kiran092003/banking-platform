@@ -1,0 +1,29 @@
+# Let git normalise text files to LF in the repository.
+* text=auto
+
+# These are read by Linux tools inside containers. core.autocrlf is enabled on
+# some Windows installs, and a CRLF here breaks the shebang in mvnw and the
+# line continuations in a Dockerfile — so pin them to LF regardless of host.
+Dockerfile      text eol=lf
+.dockerignore   text eol=lf
+*.dockerignore  text eol=lf
+docker-compose.yml text eol=lf
+*.conf          text eol=lf
+*.sh            text eol=lf
+mvnw            text eol=lf
+.env            text eol=lf
+.env.example    text eol=lf
+
+# Windows-only scripts must keep CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Never touch these.
+*.jar   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary

@@ -1,0 +1,213 @@
+# Full-stack local run: infrastructure, the five Spring Boot services and the
+# React client. Values come from the root .env file (see .env.example).
+#
+#   docker compose up --build
+#   ->  client   http://localhost:5173
+#       gateway  http://localhost:8080  (Swagger UI at /swagger-ui.html)
+#
+# Only the client and the gateway publish ports. The browser talks to the
+# gateway and nothing else; the services reach each other over the compose
+# network by container name. MySQL, Redis and Kafka are published on
+# non-default host ports so they cannot clash with local installs.
+
+name: banking-platform
+
+x-service-env: &db-env
+  DB_HOST: mysql
+  DB_PORT: "3306"
+  DB_NAME: ${DB_NAME}
+  DB_USERNAME: ${DB_USERNAME}
+  DB_PASSWORD: ${DB_PASSWORD}
+  JWT_SECRET: ${JWT_SECRET}
+
+x-healthcheck-defaults: &spring-healthcheck
+  interval: 15s
+  timeout: 5s
+  retries: 20
+  start_period: 60s
+
+services:
+
+  # ---- infrastructure ------------------------------------------------------
+
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+    ports:
+      - "${MYSQL_HOST_PORT:-3308}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_HOST_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    environment:
+      # Single-node KRaft: this container is both broker and controller.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      # PLAINTEXT is what the services use; EXTERNAL is for tools on the host.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_HOST_PORT:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Single broker, so every replication factor has to be 1.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_NUM_PARTITIONS: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: ${KAFKA_CLUSTER_ID}
+    ports:
+      - "${KAFKA_HOST_PORT:-9094}:9094"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  # ---- application services ------------------------------------------------
+
+  auth-service:
+    build: ./server/auth-service
+    restart: unless-stopped
+    environment:
+      <<: *db-env
+      AUTH_ADMIN_USERNAME: ${AUTH_ADMIN_USERNAME}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+      <<: *spring-healthcheck
+
+  account-service:
+    build: ./server/account-service
+    restart: unless-stopped
+    environment:
+      <<: *db-env
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health"]
+      <<: *spring-healthcheck
+
+  transaction-service:
+    build: ./server/transaction-service
+    restart: unless-stopped
+    environment:
+      <<: *db-env
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      ACCOUNT_SERVICE_URL: http://account-service:8082
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+      <<: *spring-healthcheck
+
+  notification-service:
+    build: ./server/notification-service
+    restart: unless-stopped
+    environment:
+      <<: *db-env
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    depends_on:
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/actuator/health"]
+      <<: *spring-healthcheck
+
+  api-gateway:
+    build: ./server/api-gateway
+    restart: unless-stopped
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      AUTH_SERVICE_URL: http://auth-service:8081
+      ACCOUNT_SERVICE_URL: http://account-service:8082
+      TRANSACTION_SERVICE_URL: http://transaction-service:8083
+      NOTIFICATION_SERVICE_URL: http://notification-service:8084
+      NOTIFICATION_WS_URL: ws://notification-service:8084/internal/ws/notifications
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      # The origin the browser actually loads the client from, and the URL it
+      # reaches this gateway on — both are host-side URLs, not container names.
+      WEBSOCKET_ALLOWED_ORIGINS: ${WEBSOCKET_ALLOWED_ORIGINS}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL}
+    ports:
+      - "${GATEWAY_HOST_PORT:-8080}:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      account-service:
+        condition: service_healthy
+      transaction-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      <<: *spring-healthcheck
+
+  # ---- client --------------------------------------------------------------
+
+  client:
+    build:
+      context: ./client
+      args:
+        # Vite inlines these at build time; /api keeps the app same-origin and
+        # proxied by nginx, so the gateway needs no CORS config.
+        VITE_API_BASE_URL: /api
+        VITE_API_TIMEOUT: "15000"
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_HOST_PORT:-5173}:80"
+    depends_on:
+      # nginx resolves api-gateway at startup, so the gateway must exist first.
+      api-gateway:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
+  kafka-data:

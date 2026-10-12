@@ -1,0 +1,21 @@
+internal:
+  service:
+    key: ${INTERNAL_SERVICE_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+info:
+  app:
+    name: Account Service
+    description: Account management and balance operations microservice for banking platform
+    version: 1.0.0
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
