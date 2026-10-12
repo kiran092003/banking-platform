@@ -37,6 +37,30 @@ export async function getUsers(
 }
 
 /**
+ * Every user, for the name pickers on the create-account and transfer screens.
+ *
+ * There is no "list all" endpoint — GET /auth/users is paginated and the
+ * backend caps `size` at 50 — so this walks the pages. The cap below bounds it:
+ * it is a picker, not a bulk export, and a directory larger than this needs a
+ * searchable combobox rather than a longer <select>.
+ */
+const MAX_DIRECTORY_PAGES = 20;
+
+export async function getAllUsers(): Promise<UserSummary[]> {
+  const collected: UserSummary[] = [];
+
+  for (let page = 0; page < MAX_DIRECTORY_PAGES; page += 1) {
+    const response = await getUsers({ page, size: MAX_USER_PAGE_SIZE });
+
+    collected.push(...response.users);
+
+    if (response.last || response.users.length === 0) break;
+  }
+
+  return collected;
+}
+
+/**
  * PATCH /auth/users/{userId}/role — ADMIN only.
  *
  * The only way to grant ADMIN: registration always creates a USER. The backend

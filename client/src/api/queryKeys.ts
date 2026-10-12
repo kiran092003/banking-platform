@@ -28,5 +28,7 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
     list: (params: UserQueryParams) => [...queryKeys.users.all, 'list', params] as const,
+    /** Full directory backing the name pickers; not a page of `list`. */
+    directory: () => [...queryKeys.users.all, 'directory'] as const,
   },
 } as const;

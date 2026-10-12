@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -5,13 +6,13 @@ import { z } from 'zod';
 import { Info } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardBody, CardFooter } from '@/components/ui/Card';
-import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { MonoText } from '@/components/common/Money';
-import { useCreateAccount } from '@/features/accounts/useAccounts';
+import { useAccounts, useCreateAccount } from '@/features/accounts/useAccounts';
+import { useUserDirectory } from '@/features/users/useUsers';
 import { normalizeApiError } from '@/utils/errors';
 import { formatAccountNumber } from '@/utils/format';
 
@@ -20,13 +21,18 @@ import { formatAccountNumber } from '@/utils/format';
  * Account number and opening balance are assigned by the service.
  */
 const createAccountSchema = z.object({
-  // Kept as a string so the field stays controlled; parsed on submit.
+  /*
+   * The picker's option values are user ids, so this stays a string (a <select>
+   * value always is) and is parsed on submit. The numeric checks are a safety
+   * net rather than input validation — the value can only come from an option
+   * this page rendered.
+   */
   userId: z
     .string()
     .trim()
-    .min(1, 'Enter a user ID')
-    .refine((value) => /^\d+$/.test(value), 'User ID must be a whole number')
-    .refine((value) => Number(value) > 0, 'User ID must be greater than 0'),
+    .min(1, 'Select a user')
+    .refine((value) => /^\d+$/.test(value), 'Select a user')
+    .refine((value) => Number(value) > 0, 'Select a user'),
   accountType: z.enum(['SAVINGS', 'CURRENT']),
 });
 
@@ -35,6 +41,39 @@ type CreateAccountValues = z.infer<typeof createAccountSchema>;
 export default function CreateAccountPage() {
   const navigate = useNavigate();
   const createAccount = useCreateAccount();
+
+  /*
+   * The picker lists users by name instead of making an admin look an id up in
+   * the database. Existing accounts are loaded alongside so users who already
+   * hold one can be left out: account-service rejects a second account with a
+   * 409 (existsByUserId, regardless of the account's status), so offering them
+   * would only produce a guaranteed failure.
+   */
+  const directory = useUserDirectory();
+  const accounts = useAccounts();
+
+  const { options: userOptions, withAccountCount } = useMemo(() => {
+    const users = directory.data ?? [];
+    const takenUserIds = new Set((accounts.data ?? []).map((account) => account.userId));
+
+    const selectable = users.filter((user) => !takenUserIds.has(user.id));
+
+    return {
+      options: selectable.map((user) => ({
+        // Value is the id the API wants; the label is what the admin reads.
+        value: String(user.id),
+        label: `${user.username} — ${user.email}`,
+      })),
+      withAccountCount: users.length - selectable.length,
+    };
+  }, [directory.data, accounts.data]);
+
+  const isLoadingPicker = directory.isLoading || accounts.isLoading;
+  const pickerError = directory.isError
+    ? normalizeApiError(directory.error)
+    : accounts.isError
+      ? normalizeApiError(accounts.error)
+      : null;
 
   const {
     register,
@@ -75,16 +114,38 @@ export default function CreateAccountPage() {
                 </Alert>
               )}
 
-              <Input
-                label="User ID"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                placeholder="e.g. 1042"
-                hint="Numeric ID of the user who will own this account"
+              {pickerError && (
+                <Alert tone="error" title="Could not load the user list">
+                  {pickerError.message}
+                </Alert>
+              )}
+
+              <Select
+                label="Account holder"
+                placeholder={
+                  isLoadingPicker
+                    ? 'Loading users…'
+                    : userOptions.length === 0
+                      ? 'No users available'
+                      : 'Select a user'
+                }
+                options={userOptions}
+                disabled={isLoadingPicker || userOptions.length === 0}
+                hint={
+                  withAccountCount > 0
+                    ? `${withAccountCount} ${withAccountCount === 1 ? 'user' : 'users'} already hold an account and are not listed.`
+                    : 'The user who will own this account'
+                }
                 error={errors.userId?.message}
                 {...register('userId')}
               />
+
+              {!isLoadingPicker && !pickerError && userOptions.length === 0 && (
+                <Alert tone="info" title="Every user already has an account">
+                  Accounts are one per user. Register a new user before opening another
+                  account.
+                </Alert>
+              )}
 
               <Select
                 label="Account type"
@@ -113,7 +174,11 @@ export default function CreateAccountPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" isLoading={createAccount.isPending}>
+              <Button
+                type="submit"
+                isLoading={createAccount.isPending}
+                disabled={isLoadingPicker || userOptions.length === 0}
+              >
                 {createAccount.isPending ? 'Creating…' : 'Create account'}
               </Button>
             </CardFooter>

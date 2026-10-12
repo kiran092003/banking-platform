@@ -15,11 +15,14 @@ import { DetailList, DetailRow } from '@/components/common/DetailRow';
 import { Money, MonoText } from '@/components/common/Money';
 import { EmptyState, ErrorState } from '@/components/ui/States';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { useMyAccount } from '@/features/accounts/useAccounts';
+import { useAccounts, useMyAccount } from '@/features/accounts/useAccounts';
+import { useUserDirectory } from '@/features/users/useUsers';
+import { useAuth } from '@/features/auth/useAuth';
 import { useCreateTransaction } from '@/features/transactions/useTransactions';
 import { generateIdempotencyKey } from '@/utils/idempotency';
 import { normalizeApiError } from '@/utils/errors';
 import { formatAccountNumber, formatDateTime } from '@/utils/format';
+import type { Account } from '@/types/account';
 import type { Transaction, TransactionType } from '@/types/transaction';
 import { cn } from '@/utils/cn';
 
@@ -54,7 +57,8 @@ const transferSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['receiverAccountId'],
-        message: 'Enter the recipient account ID',
+        // Neutral wording: admins pick from a list, a USER types an id.
+        message: 'A recipient account is required',
       });
       return;
     }
@@ -68,6 +72,16 @@ const transferSchema = z
       });
     }
   });
+
+/**
+ * How a recipient reads in the picker and on the review screen: the holder's
+ * name first, because that is what an admin is choosing by, with the account
+ * number to disambiguate.
+ */
+function describeRecipient(account: Account, holderName: string | undefined): string {
+  const who = holderName ?? `User #${account.userId}`;
+  return `${who} — ${formatAccountNumber(account.accountNumber)} · ${account.accountType}`;
+}
 
 type TransferValues = z.infer<typeof transferSchema>;
 
@@ -146,6 +160,50 @@ export default function TransferPage() {
   const myAccount = useMyAccount();
   const createTransaction = useCreateTransaction();
 
+  /*
+   * Recipient picker, admins only.
+   *
+   * Listing every account by holder name saves an admin a database lookup for
+   * the numeric id. Both endpoints behind it are ADMIN-only, and deliberately
+   * so — letting any customer enumerate every account holder and account
+   * number would be a privacy hole — so a USER keeps the plain id field below.
+   */
+  const { isAdmin } = useAuth();
+  const allAccounts = useAccounts();
+  const directory = useUserDirectory();
+
+  const account = myAccount.data;
+
+  const recipientOptions = useMemo(() => {
+    if (!isAdmin) return [];
+
+    const namesByUserId = new Map(
+      (directory.data ?? []).map((user) => [user.id, user.username])
+    );
+
+    return (allAccounts.data ?? [])
+      // A transfer to yourself is rejected by the backend, and a non-ACTIVE
+      // account cannot receive funds — neither belongs in the list.
+      .filter((candidate) => candidate.id !== account?.id && candidate.status === 'ACTIVE')
+      .map((candidate) => ({
+        // Value is the account id the API wants; the label is the holder's name.
+        value: String(candidate.id),
+        label: describeRecipient(candidate, namesByUserId.get(candidate.userId)),
+      }));
+  }, [isAdmin, allAccounts.data, directory.data, account?.id]);
+
+  const isLoadingRecipients =
+    isAdmin && (allAccounts.isLoading || directory.isLoading);
+
+  /**
+   * The chosen recipient, spelled out for the review screen. Undefined when the
+   * id did not come from the picker (a USER typing one in), in which case the
+   * review falls back to showing the number.
+   */
+  const reviewedRecipientLabel = recipientOptions.find(
+    (option) => option.value === reviewed?.receiverAccountId
+  )?.label;
+
   const {
     register,
     handleSubmit,
@@ -158,8 +216,6 @@ export default function TransferPage() {
 
   const transactionType = watch('transactionType');
   const amountValue = watch('amount');
-
-  const account = myAccount.data;
 
   // Client-side guard only; the backend remains authoritative on balance.
   const exceedsBalance = useMemo(() => {
@@ -313,18 +369,35 @@ export default function TransferPage() {
                 </div>
               </div>
 
-              {transactionType === 'TRANSFER' && (
-                <Input
-                  label="Recipient account ID"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  placeholder="e.g. 2"
-                  hint="The recipient's numeric account ID. The platform does not expose account-number lookup to customers."
-                  error={errors.receiverAccountId?.message}
-                  {...register('receiverAccountId')}
-                />
-              )}
+              {transactionType === 'TRANSFER' &&
+                (isAdmin ? (
+                  <Select
+                    label="Recipient"
+                    placeholder={
+                      isLoadingRecipients
+                        ? 'Loading accounts…'
+                        : recipientOptions.length === 0
+                          ? 'No other active account'
+                          : 'Select a recipient'
+                    }
+                    options={recipientOptions}
+                    disabled={isLoadingRecipients || recipientOptions.length === 0}
+                    hint="Only other ACTIVE accounts can receive a transfer."
+                    error={errors.receiverAccountId?.message}
+                    {...register('receiverAccountId')}
+                  />
+                ) : (
+                  <Input
+                    label="Recipient account ID"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="e.g. 2"
+                    hint="The recipient's numeric account ID. The platform does not expose account-number lookup to customers."
+                    error={errors.receiverAccountId?.message}
+                    {...register('receiverAccountId')}
+                  />
+                ))}
 
               <Input
                 label="Amount"
@@ -388,8 +461,14 @@ export default function TransferPage() {
               )}
 
               {reviewed.transactionType === 'TRANSFER' && (
-                <DetailRow label="To account ID">
-                  <MonoText className="text-sm">{reviewed.receiverAccountId}</MonoText>
+                <DetailRow label="To">
+                  {reviewedRecipientLabel ? (
+                    <span className="text-sm text-ink">{reviewedRecipientLabel}</span>
+                  ) : (
+                    <MonoText className="text-sm">
+                      Account #{reviewed.receiverAccountId}
+                    </MonoText>
+                  )}
                 </DetailRow>
               )}
 

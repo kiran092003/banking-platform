@@ -20,6 +20,24 @@ export function useUsers(params: UserQueryParams) {
 }
 
 /**
+ * Every user, keyed by id, for the name pickers that replaced the raw numeric
+ * ID fields. Separate from `useUsers` so paging through the admin table never
+ * evicts the picker's data, and vice versa.
+ */
+export function useUserDirectory() {
+  const { isAdmin } = useAuth();
+
+  return useQuery({
+    queryKey: queryKeys.users.directory(),
+    queryFn: userApi.getAllUsers,
+    // Pointless to fire for a non-admin: the backend rejects it with a 403.
+    enabled: isAdmin,
+    // The directory changes far less often than a balance does.
+    staleTime: 60_000,
+  });
+}
+
+/**
  * PATCH /auth/users/{userId}/role
  *
  * Invalidates the directory so the new role shows immediately. It does not
