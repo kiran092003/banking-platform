@@ -55,3 +55,18 @@ export function useUpdateUserRole() {
     },
   });
 }
+
+/**
+ * PATCH /auth/users/{userId}/password
+ *
+ * Nothing in the directory listing changes — a password is not part of
+ * UserSummary — so there is no invalidation to do. It cannot affect the
+ * caller's own session either: the backend refuses an admin resetting their
+ * own password, which is what the change-password form is for.
+ */
+export function useResetUserPassword() {
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: number; newPassword: string }) =>
+      userApi.resetUserPassword(userId, { newPassword }),
+  });
+}

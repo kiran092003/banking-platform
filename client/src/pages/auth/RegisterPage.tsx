@@ -2,19 +2,15 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, Eye, EyeOff, Lock, Mail, ShieldCheck, User } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, ShieldCheck, User } from 'lucide-react';
 import { AuthLayout } from './AuthLayout';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Alert } from '@/components/ui/Alert';
 import { useRegister } from '@/features/auth/useAuth';
-import {
-  passwordRules,
-  registerSchema,
-  type RegisterFormValues,
-} from '@/features/auth/validation';
+import { registerSchema, type RegisterFormValues } from '@/features/auth/validation';
+import { PasswordChecklist } from '@/features/auth/PasswordChecklist';
 import { normalizeApiError } from '@/utils/errors';
-import { cn } from '@/utils/cn';
 
 /*
  * There is no role selector here by design. Registration always creates a
@@ -23,36 +19,6 @@ import { cn } from '@/utils/cn';
  * form that could grant ADMIN would be a privilege-escalation hole, and a
  * dev-only flag guarding it still leaves the backend accepting the field.
  */
-
-function PasswordChecklist({ value }: { value: string }) {
-  return (
-    <ul className="mt-2 grid gap-1.5" aria-label="Password requirements">
-      {passwordRules.map((rule) => {
-        const met = rule.test(value);
-        return (
-          <li key={rule.label} className="flex items-center gap-2 text-[13px]">
-            <span
-              className={cn(
-                'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
-                met ? 'bg-positive-bg' : 'bg-surface-2'
-              )}
-            >
-              {met ? (
-                <Check className="h-2.5 w-2.5 text-positive-text" aria-hidden="true" />
-              ) : (
-                <span className="h-1 w-1 rounded-full bg-ink-subtle" aria-hidden="true" />
-              )}
-            </span>
-            <span className={met ? 'text-positive-text' : 'text-ink-muted'}>
-              {rule.label}
-            </span>
-            <span className="sr-only">{met ? ' — met' : ' — not met'}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
 
 export default function RegisterPage() {
   const navigate = useNavigate();

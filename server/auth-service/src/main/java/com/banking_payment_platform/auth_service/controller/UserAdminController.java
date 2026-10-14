@@ -1,5 +1,6 @@
 package com.banking_payment_platform.auth_service.controller;
 
+import com.banking_payment_platform.auth_service.dto.ResetPasswordDto;
 import com.banking_payment_platform.auth_service.dto.UpdateRoleDto;
 import com.banking_payment_platform.auth_service.dto.UserPageResponseDto;
 import com.banking_payment_platform.auth_service.dto.UserSummaryDto;
@@ -97,6 +98,44 @@ public class UserAdminController {
                 userAdminService.updateRole(
                         userId,
                         request.getRole(),
+                        authentication == null ? null : authentication.getName()
+                )
+        );
+    }
+
+    @PatchMapping("/{userId}/password")
+    @Operation(
+            summary = "Reset a user password",
+            description = "Sets a new password for the given user, for account "
+                    + "recovery. This is how a forgotten password is dealt with: the "
+                    + "platform has no email channel, so there is no self-service "
+                    + "reset link. The new password is chosen here and must be handed "
+                    + "to the user out of band; they can then change it themselves via "
+                    + "POST /password. The target's refresh token is revoked, so their "
+                    + "existing session cannot outlive the reset. An admin cannot reset "
+                    + "their own password here."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Password reset"),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Password fails the password rules, or the admin "
+                            + "targeted their own account"
+            ),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid access token"),
+            @ApiResponse(responseCode = "403", description = "Caller is not an ADMIN"),
+            @ApiResponse(responseCode = "404", description = "No such user")
+    })
+    public ResponseEntity<UserSummaryDto> resetPassword(
+            @PathVariable Long userId,
+            @Valid @RequestBody ResetPasswordDto request,
+            Authentication authentication
+    ) {
+
+        return ResponseEntity.ok(
+                userAdminService.resetPassword(
+                        userId,
+                        request.getNewPassword(),
                         authentication == null ? null : authentication.getName()
                 )
         );

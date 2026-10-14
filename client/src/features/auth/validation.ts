@@ -33,6 +33,11 @@ export const loginSchema = z.object({
     .string()
     .min(8, 'Password must be at least 8 characters')
     .max(100, 'Password must be at most 100 characters'),
+  /**
+   * Remember me. Not a credential: it picks localStorage over sessionStorage
+   * for the token pair and is stripped before the request.
+   */
+  remember: z.boolean(),
 });
 
 export type LoginFormValues = z.infer<typeof loginSchema>;
@@ -61,3 +66,51 @@ export const registerSchema = z
   });
 
 export type RegisterFormValues = z.infer<typeof registerSchema>;
+
+/** The same @Size + @Pattern rules the backend applies to any new password. */
+const newPasswordField = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(100, 'Password must be at most 100 characters')
+  .regex(
+    PASSWORD_PATTERN,
+    'Include a lowercase and uppercase letter, a number and a special character (@$!%*?&)'
+  );
+
+/**
+ * ChangePasswordDto: a user changing their own password.
+ *
+ * The current password is only checked for presence here. Whether it is right
+ * is a question for the server, and the length rules have changed over time —
+ * rejecting an older but still valid password on the client would lock someone
+ * out of the very form that lets them replace it.
+ */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Enter your current password'),
+    newPassword: newPasswordField,
+    confirmPassword: z.string().min(1, 'Confirm your new password'),
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  })
+  .refine((values) => values.newPassword !== values.currentPassword, {
+    message: 'Choose a password different from your current one',
+    path: ['newPassword'],
+  });
+
+export type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
+
+/** ResetPasswordDto: an admin setting another user's password. */
+export const resetPasswordSchema = z
+  .object({
+    newPassword: newPasswordField,
+    confirmPassword: z.string().min(1, 'Confirm the new password'),
+  })
+  .refine((values) => values.newPassword === values.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
+
+export type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>;

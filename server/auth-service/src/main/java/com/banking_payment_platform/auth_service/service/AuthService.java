@@ -1,5 +1,6 @@
 package com.banking_payment_platform.auth_service.service;
 
+import com.banking_payment_platform.auth_service.dto.ChangePasswordDto;
 import com.banking_payment_platform.auth_service.dto.LoginDto;
 import com.banking_payment_platform.auth_service.dto.LoginResponseDto;
 import com.banking_payment_platform.auth_service.dto.RegisterDto;
@@ -7,6 +8,7 @@ import com.banking_payment_platform.auth_service.entity.RefreshToken;
 import com.banking_payment_platform.auth_service.entity.Role;
 import com.banking_payment_platform.auth_service.entity.User;
 import com.banking_payment_platform.auth_service.exception.InvalidCredentialsException;
+import com.banking_payment_platform.auth_service.exception.InvalidPasswordChangeException;
 import com.banking_payment_platform.auth_service.exception.ResourceAlreadyExistsException;
 import com.banking_payment_platform.auth_service.metrics.AuthBusinessMetrics;
 import com.banking_payment_platform.auth_service.repository.RefreshTokenRepository;
@@ -18,8 +20,9 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -39,19 +42,20 @@ public class AuthService {
     @Autowired
     private AuthenticationManager authenticationManage;
 
-    private final BCryptPasswordEncoder passwordEncoder =
-            new BCryptPasswordEncoder(10);
+    private final PasswordEncoder passwordEncoder;
 
     public AuthService(
             UserRepository userRepository,
             MyUserDetailsService myUserDetailsService,
             RefreshTokenRepository refreshTokenRepository,
-            AuthBusinessMetrics authBusinessMetrics
+            AuthBusinessMetrics authBusinessMetrics,
+            PasswordEncoder passwordEncoder
     ) {
         this.userRepository = userRepository;
         this.myUserDetailsService = myUserDetailsService;
         this.refreshTokenRepository = refreshTokenRepository;
         this.authBusinessMetrics = authBusinessMetrics;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // REGISTER
@@ -263,7 +267,7 @@ public class AuthService {
                         refreshTokenRepository
                                 .findByToken(refreshToken)
                                 .orElseThrow(() ->
-                                        new RuntimeException(
+                                        new InvalidCredentialsException(
                                                 "Invalid refresh token"
                                         )
                                 );
@@ -284,7 +288,14 @@ public class AuthService {
                         storedToken.getUser().getId()
                 );
 
-                throw new RuntimeException(
+                /*
+                 * Revoked by a sign-out, or by a password change or admin reset
+                 * withdrawing every session. An expected outcome, so it is
+                 * reported as a 401: the catch-all would otherwise turn it into
+                 * a 500, and the client reads a failed refresh as "sign in
+                 * again" rather than as a server fault.
+                 */
+                throw new InvalidCredentialsException(
                         "Refresh token has been revoked"
                 );
             }
@@ -297,7 +308,7 @@ public class AuthService {
                         storedToken.getUser().getId()
                 );
 
-                throw new RuntimeException(
+                throw new InvalidCredentialsException(
                         "Refresh token has expired"
                 );
             }
@@ -380,5 +391,131 @@ public class AuthService {
 
             throw exception;
         }
+    }
+
+    // CHANGE OWN PASSWORD
+    /**
+     * Changes the password of the signed-in user.
+     *
+     * {@code username} comes from the verified access token, never from the
+     * request body, so this can only ever act on the caller's own account.
+     *
+     * Transactional because the password update and the refresh-token
+     * revocation below have to land together: a committed new password with a
+     * still-valid refresh token would leave the old session able to mint access
+     * tokens, which is the opposite of what changing a password is for.
+     */
+    @Transactional
+    public void changePassword(
+            String username,
+            ChangePasswordDto changePasswordDto
+    ) {
+
+        log.info(
+                "Password change request received. username={}",
+                username
+        );
+
+        try {
+
+            User user = userRepository.findByUsername(username);
+
+            if (user == null) {
+
+                /*
+                 * The token verified but the row is gone — deleted mid-session.
+                 * Not a client error worth describing, so it is reported as a
+                 * failed authentication.
+                 */
+                log.error(
+                        "Password change failed because the authenticated user no longer exists. username={}",
+                        username
+                );
+
+                throw new InvalidCredentialsException(
+                        "Invalid username or password"
+                );
+            }
+
+            if (!passwordEncoder.matches(
+                    changePasswordDto.getCurrentPassword(),
+                    user.getPassword()
+            )) {
+
+                log.warn(
+                        "Password change rejected because the current password did not match. userId={}",
+                        user.getId()
+                );
+
+                throw new InvalidPasswordChangeException(
+                        "Current password is incorrect"
+                );
+            }
+
+            if (passwordEncoder.matches(
+                    changePasswordDto.getNewPassword(),
+                    user.getPassword()
+            )) {
+
+                log.warn(
+                        "Password change rejected because the new password matches the current one. userId={}",
+                        user.getId()
+                );
+
+                throw new InvalidPasswordChangeException(
+                        "New password must be different from the current password"
+                );
+            }
+
+            user.setPassword(
+                    passwordEncoder.encode(
+                            changePasswordDto.getNewPassword()
+                    )
+            );
+
+            userRepository.save(user);
+
+            revokeRefreshToken(user.getId());
+
+            authBusinessMetrics.recordPasswordChangeSuccess();
+
+            log.info(
+                    "Password changed successfully. userId={}, username={}",
+                    user.getId(),
+                    username
+            );
+
+        } catch (RuntimeException exception) {
+
+            authBusinessMetrics.recordPasswordChangeFailure();
+
+            throw exception;
+        }
+    }
+
+    /**
+     * Revokes the stored refresh token of a user whose password just changed,
+     * so sessions opened with the old password cannot refresh themselves.
+     *
+     * Login keeps a single refresh token per user — it deletes any previous one
+     * — so there is at most one row to revoke. It is revoked rather than
+     * deleted, matching logout, which keeps the row as a record that the token
+     * existed and was withdrawn.
+     */
+    private void revokeRefreshToken(Long userId) {
+
+        refreshTokenRepository
+                .findByUserId(userId)
+                .ifPresent(storedToken -> {
+
+                    storedToken.setRevoked(true);
+
+                    refreshTokenRepository.save(storedToken);
+
+                    log.info(
+                            "Refresh token revoked after a password change. userId={}",
+                            userId
+                    );
+                });
     }
 }

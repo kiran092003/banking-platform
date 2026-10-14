@@ -15,6 +15,8 @@ interface LocationState {
   from?: string;
   sessionExpired?: boolean;
   registered?: boolean;
+  /** Set by the change-password form, which ends the session on success. */
+  passwordChanged?: boolean;
 }
 
 export default function LoginPage() {
@@ -31,7 +33,12 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { username: '', password: '' },
+    /*
+     * Remember me defaults on, matching where tokens were stored before it
+     * existed: localStorage, surviving a browser restart. Unchecking it moves
+     * the session into sessionStorage, so closing the tab ends it.
+     */
+    defaultValues: { username: '', password: '', remember: true },
   });
 
   const onSubmit = handleSubmit((values) => {
@@ -61,7 +68,13 @@ export default function LoginPage() {
             </Alert>
           )}
 
-          {state.sessionExpired && !submitError && (
+          {state.passwordChanged && !submitError && (
+            <Alert tone="success" className="mt-5">
+              Your password was changed. Sign in with your new password.
+            </Alert>
+          )}
+
+          {state.sessionExpired && !submitError && !state.passwordChanged && (
             <Alert tone="warning" className="mt-5">
               Your session expired. Please sign in again.
             </Alert>
@@ -109,23 +122,21 @@ export default function LoginPage() {
               {...register('password')}
             />
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 text-[13px] text-ink-body">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4 rounded-micro border-outline text-cobalt focus:ring-cobalt"
-                />
-                Remember me
-              </label>
-
-              {/* No password-reset endpoint exists in auth-service yet. */}
-              <span
-                title="Password recovery is not available yet"
-                className="cursor-not-allowed text-[13px] font-medium text-ink-subtle"
-              >
-                Forgot password?
-              </span>
-            </div>
+            {/*
+              No "Forgot password?" here on purpose. Self-service recovery needs
+              an emailed one-time link, and the platform has no mail channel, so
+              the control could only ever have been inert. A signed-in user
+              changes their password from Settings; a locked-out one needs an
+              administrator to reset it from Admin > Users.
+            */}
+            <label className="flex items-center gap-2 text-[13px] text-ink-body">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded-micro border-outline text-cobalt focus:ring-cobalt"
+                {...register('remember')}
+              />
+              Remember me
+            </label>
 
             <Button type="submit" fullWidth isLoading={login.isPending}>
               {login.isPending ? 'Signing in…' : 'Sign in'}

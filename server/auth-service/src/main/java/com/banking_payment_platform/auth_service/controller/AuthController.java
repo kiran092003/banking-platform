@@ -11,6 +11,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -147,6 +148,50 @@ public class AuthController {
 
         return ResponseEntity.ok(
                 "Logged out successfully"
+        );
+    }
+
+    @PostMapping("/password")
+    @Operation(
+            summary = "Change your own password",
+            description = "Changes the signed-in user's password. The account is taken "
+                    + "from the access token, so this can only ever act on the caller's "
+                    + "own account, and the current password must be supplied even "
+                    + "though the caller is already authenticated. On success the "
+                    + "user's refresh token is revoked, so every session has to sign "
+                    + "in again with the new password."
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Password changed; sign in again"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Current password is wrong, the new password repeats "
+                            + "the old one, or it fails the password rules"
+            ),
+            @ApiResponse(
+                    responseCode = "401",
+                    description = "Missing or invalid access token"
+            )
+    })
+    public ResponseEntity<String> changePassword(
+            @Valid @RequestBody ChangePasswordDto request,
+            Authentication authentication) {
+
+        /*
+         * The principal name is the username the JwtFilter read out of a
+         * verified token. Taking the account from here rather than from the
+         * body is what keeps one user from changing another's password.
+         */
+        authService.changePassword(
+                authentication.getName(),
+                request
+        );
+
+        return ResponseEntity.ok(
+                "Password changed successfully"
         );
     }
 

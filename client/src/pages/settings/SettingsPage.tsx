@@ -1,15 +1,17 @@
 import { PageHeader } from '@/components/common/PageHeader';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { DetailList, DetailRow } from '@/components/common/DetailRow';
 import { MonoText } from '@/components/common/Money';
-import { useAuth, useLogout } from '@/features/auth/useAuth';
+import { useAppDispatch } from '@/app/hooks';
+import { signOutDialogSet } from '@/features/ui/uiSlice';
+import { useAuth } from '@/features/auth/useAuth';
+import { ChangePasswordCard } from '@/features/auth/ChangePasswordCard';
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const logout = useLogout();
+  const dispatch = useAppDispatch();
 
   return (
     <>
@@ -32,15 +34,15 @@ export default function SettingsPage() {
             </DetailList>
 
             {/*
-              auth-service exposes register, login, refresh and logout only —
-              there is no profile-update or change-password endpoint.
+              Username, email and role are still fixed: auth-service has no
+              profile-update endpoint, and a role is an admin's to assign. The
+              password is the one thing here a user can change themselves, and
+              it has its own card below.
             */}
-            <Alert tone="info" className="mt-5">
-              Profile editing and password changes are not available: the auth service exposes
-              only registration, sign-in, token refresh and sign-out.
-            </Alert>
           </CardBody>
         </Card>
+
+        <ChangePasswordCard />
 
         <Card className="h-fit">
           <CardHeader title="Session" description="Sign out on this device" />
@@ -52,10 +54,9 @@ export default function SettingsPage() {
             <Button
               variant="destructive"
               className="mt-5"
-              isLoading={logout.isPending}
-              onClick={() => logout.mutate()}
+              onClick={() => dispatch(signOutDialogSet(true))}
             >
-              {logout.isPending ? 'Signing out…' : 'Sign out'}
+              Sign out
             </Button>
           </CardBody>
         </Card>

@@ -19,6 +19,9 @@ public class AuthBusinessMetrics {
     private final Counter logoutSuccessCounter;
     private final Counter logoutFailureCounter;
 
+    private final Counter passwordChangeSuccessCounter;
+    private final Counter passwordChangeFailureCounter;
+
     public AuthBusinessMetrics(MeterRegistry meterRegistry) {
 
         loginSuccessCounter =
@@ -60,6 +63,21 @@ public class AuthBusinessMetrics {
                 Counter.builder("banking.auth.logout.failure")
                         .description("Number of failed user logout operations")
                         .register(meterRegistry);
+
+        /*
+         * Self-service password changes only. An administrative reset is a
+         * different act with a different actor, and is recorded in the audit
+         * log rather than counted here.
+         */
+        passwordChangeSuccessCounter =
+                Counter.builder("banking.auth.password.change.success")
+                        .description("Number of successful self-service password changes")
+                        .register(meterRegistry);
+
+        passwordChangeFailureCounter =
+                Counter.builder("banking.auth.password.change.failure")
+                        .description("Number of rejected self-service password changes")
+                        .register(meterRegistry);
     }
 
     public void recordLoginSuccess() {
@@ -92,5 +110,13 @@ public class AuthBusinessMetrics {
 
     public void recordLogoutFailure() {
         logoutFailureCounter.increment();
+    }
+
+    public void recordPasswordChangeSuccess() {
+        passwordChangeSuccessCounter.increment();
+    }
+
+    public void recordPasswordChangeFailure() {
+        passwordChangeFailureCounter.increment();
     }
 }
