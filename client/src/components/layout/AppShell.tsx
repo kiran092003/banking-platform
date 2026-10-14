@@ -2,8 +2,9 @@ import { useEffect } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { mobileNavSet } from '@/features/ui/uiSlice';
+import { mobileNavSet, signOutDialogSet } from '@/features/ui/uiSlice';
 import { NotificationSocketProvider } from '@/features/notifications/NotificationSocketProvider';
+import { SignOutDialog } from '@/features/auth/SignOutDialog';
 import { Sidebar, SidebarContent } from './Sidebar';
 import { Header } from './Header';
 
@@ -60,6 +61,9 @@ function MobileNav() {
 }
 
 export function AppShell() {
+  const dispatch = useAppDispatch();
+  const isSignOutOpen = useAppSelector((state) => state.ui.isSignOutOpen);
+
   return (
     // One notification socket for the whole authenticated app.
     <NotificationSocketProvider>
@@ -73,6 +77,15 @@ export function AppShell() {
             <Outlet />
           </main>
         </div>
+
+        {/*
+          Rendered here rather than next to either trigger: the sidebar is
+          unmounted with the mobile drawer, which would take the dialog with it.
+        */}
+        <SignOutDialog
+          isOpen={isSignOutOpen}
+          onClose={() => dispatch(signOutDialogSet(false))}
+        />
       </div>
     </NotificationSocketProvider>
   );
