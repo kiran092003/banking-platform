@@ -199,7 +199,10 @@ services:
         # Vite inlines these at build time; /api keeps the app same-origin and
         # proxied by nginx, so the gateway needs no CORS config.
         VITE_API_BASE_URL: /api
-        VITE_API_TIMEOUT: "15000"
+        # A transfer's retry budget across the Account Service calls runs to
+        # tens of seconds, so 15s gave up on transactions that then completed
+        # server-side and looked like failures in the browser.
+        VITE_API_TIMEOUT: "30000"
     restart: unless-stopped
     ports:
       - "${CLIENT_HOST_PORT:-5173}:80"

@@ -5,7 +5,12 @@ account-service:
   base-url: ${ACCOUNT_SERVICE_URL:http://localhost:8082}
   timeout:
     connect: 2s
-    read: 5s
+    # A freshly started account-service spends seconds on class loading and JIT
+    # before its first transfer returns, which a 5s read timeout mistook for an
+    # outage: the call was cancelled and retried even though the transfer had
+    # already committed. 10s clears that cold first call, and a genuinely stuck
+    # Account Service is still caught by the retry and circuit breaker.
+    read: 10s
 
 internal:
   service:
