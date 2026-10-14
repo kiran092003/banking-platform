@@ -1,6 +1,7 @@
 import { apiClient } from './axios';
 import {
   MAX_USER_PAGE_SIZE,
+  type ResetPasswordRequest,
   type UpdateRoleRequest,
   type UserPageResponse,
   type UserQueryParams,
@@ -75,6 +76,27 @@ export async function updateUserRole(
     payload,
     // Blocking: granting ADMIN is the most privileged action on the platform.
     { loading: { blocking: true, message: 'Updating role…' } }
+  );
+  return data;
+}
+
+/**
+ * PATCH /auth/users/{userId}/password — ADMIN only.
+ *
+ * Account recovery for a forgotten password: the platform has no email
+ * channel, so a reset is an administrative act rather than a self-service
+ * link. The backend revokes the target's refresh token, so their existing
+ * session ends, and refuses with a 400 if an admin targets their own account.
+ */
+export async function resetUserPassword(
+  userId: number,
+  payload: ResetPasswordRequest
+): Promise<UserSummary> {
+  const { data } = await apiClient.patch<UserSummary>(
+    `/auth/users/${userId}/password`,
+    payload,
+    // Blocking: it takes over another account's credentials.
+    { loading: { blocking: true, message: 'Resetting password…' } }
   );
   return data;
 }

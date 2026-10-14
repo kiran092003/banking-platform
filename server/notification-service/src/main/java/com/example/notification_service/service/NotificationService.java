@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -27,13 +28,68 @@ public class NotificationService {
         String eventId = event.eventId().toString();
 
         /*
+         * A transfer concerns two people, so one Kafka event can produce two
+         * notifications: one for the account that sent the money and one for
+         * the account that received it.
+         *
+         * The sender's row keeps the bare eventId it has always had, so events
+         * stored before counterparty notifications existed still de-duplicate.
+         * The counterparty's row is suffixed with their user id, which keeps
+         * the UNIQUE constraint on event_id doing its job per recipient.
+         */
+        createNotification(
+                event,
+                event.userId(),
+                eventId,
+                false
+        );
+
+        Long receiverUserId = event.receiverUserId();
+
+        if (receiverUserId != null
+                && !Objects.equals(receiverUserId, event.userId())) {
+
+            createNotification(
+                    event,
+                    receiverUserId,
+                    eventId + ":" + receiverUserId,
+                    true
+            );
+        }
+    }
+
+    /**
+     * Stores one notification for one recipient.
+     *
+     * @param incoming whether the recipient is on the receiving end, which
+     *                 decides how the message is worded
+     */
+    private void createNotification(
+            TransactionEvent event,
+            Long userId,
+            String notificationEventId,
+            boolean incoming
+    ) {
+
+        if (userId == null) {
+
+            log.warn(
+                    "Transaction event has no recipient user. eventId={}, transactionId={}",
+                    notificationEventId,
+                    event.transactionId()
+            );
+
+            return;
+        }
+
+        /*
          * Fast duplicate check.
          */
-        if (notificationRepository.existsByEventId(eventId)) {
+        if (notificationRepository.existsByEventId(notificationEventId)) {
 
             log.info(
                     "Duplicate transaction event ignored. eventId={}, transactionId={}",
-                    eventId,
+                    notificationEventId,
                     event.transactionId()
             );
 
@@ -41,15 +97,15 @@ public class NotificationService {
         }
 
         Notification notification = Notification.builder()
-                .eventId(eventId)
+                .eventId(notificationEventId)
                 .transactionId(event.transactionId())
-                .userId(event.userId())
+                .userId(userId)
                 .senderAccountId(event.senderAccountId())
                 .receiverAccountId(event.receiverAccountId())
                 .amount(event.amount())
                 .transactionType(event.transactionType())
                 .transactionStatus(event.status())
-                .message(buildNotificationMessage(event))
+                .message(buildNotificationMessage(event, incoming))
                 .createdAt(
                         event.occurredAt() != null
                                 ? event.occurredAt()
@@ -72,9 +128,9 @@ public class NotificationService {
 
             log.info(
                     "Notification created successfully. eventId={}, transactionId={}, userId={}",
-                    eventId,
+                    notificationEventId,
                     event.transactionId(),
-                    event.userId()
+                    userId
             );
 
         } catch (DataIntegrityViolationException exception) {
@@ -88,20 +144,31 @@ public class NotificationService {
              */
             log.info(
                     "Duplicate transaction event detected by database. eventId={}",
-                    eventId
+                    notificationEventId
             );
         }
     }
 
-    private String buildNotificationMessage(TransactionEvent event) {
+    private String buildNotificationMessage(
+            TransactionEvent event,
+            boolean incoming
+    ) {
 
         return switch (event.transactionType()) {
 
-            case "TRANSFER" ->
-                    String.format(
-                            "Transaction %s: Transfer of %.2f was %s.",
+            case "TRANSFER" -> incoming
+                    ? String.format(
+                            "Transaction %s: Transfer of %.2f from account %s was %s.",
                             event.transactionId(),
                             event.amount(),
+                            event.senderAccountId(),
+                            event.status().toLowerCase()
+                    )
+                    : String.format(
+                            "Transaction %s: Transfer of %.2f to account %s was %s.",
+                            event.transactionId(),
+                            event.amount(),
+                            event.receiverAccountId(),
                             event.status().toLowerCase()
                     );
 

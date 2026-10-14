@@ -34,6 +34,16 @@ export interface UserPageResponse {
 }
 
 /** PATCH /auth/users/{userId}/role request — UpdateRoleDto. */
+/**
+ * PATCH /auth/users/{userId}/password request — ResetPasswordDto.
+ *
+ * No current password: the endpoint exists to recover an account whose
+ * password nobody knows. Authorisation is the caller's ADMIN role.
+ */
+export interface ResetPasswordRequest {
+  newPassword: string;
+}
+
 export interface UpdateRoleRequest {
   role: Role;
 }

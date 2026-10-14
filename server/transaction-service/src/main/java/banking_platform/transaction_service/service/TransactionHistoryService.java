@@ -19,6 +19,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -39,6 +40,8 @@ public class TransactionHistoryService {
             TransactionType transactionType,
             LocalDateTime from,
             LocalDateTime to,
+            BigDecimal minAmount,
+            BigDecimal maxAmount,
             String sortBy,
             String direction
     ) {
@@ -55,6 +58,13 @@ public class TransactionHistoryService {
         // ---------------------------------------------------------
 
         validateDateRange(from, to);
+
+
+        // ---------------------------------------------------------
+        // STEP 2b: Validate amount range
+        // ---------------------------------------------------------
+
+        validateAmountRange(minAmount, maxAmount);
 
 
         // ---------------------------------------------------------
@@ -141,6 +151,26 @@ public class TransactionHistoryService {
         }
 
 
+        if (minAmount != null) {
+
+            specification =
+                    specification.and(
+                            TransactionSpecification
+                                    .amountFrom(minAmount)
+                    );
+        }
+
+
+        if (maxAmount != null) {
+
+            specification =
+                    specification.and(
+                            TransactionSpecification
+                                    .amountTo(maxAmount)
+                    );
+        }
+
+
         // ---------------------------------------------------------
         // STEP 7: Execute query
         // ---------------------------------------------------------
@@ -218,6 +248,45 @@ public class TransactionHistoryService {
 
             throw new InvalidTransactionException(
                     "'from' date must be before 'to' date"
+            );
+        }
+    }
+
+
+    /**
+     * Rejects an amount range that cannot match anything, rather than quietly
+     * returning an empty page the caller would read as "no transactions".
+     *
+     * A negative bound is refused too: no transaction can have one, so it is a
+     * malformed request rather than a filter that happens to match nothing.
+     */
+    private void validateAmountRange(
+            BigDecimal minAmount,
+            BigDecimal maxAmount
+    ) {
+
+        if (minAmount != null
+                && minAmount.signum() < 0) {
+
+            throw new InvalidTransactionException(
+                    "'minAmount' cannot be negative"
+            );
+        }
+
+        if (maxAmount != null
+                && maxAmount.signum() < 0) {
+
+            throw new InvalidTransactionException(
+                    "'maxAmount' cannot be negative"
+            );
+        }
+
+        if (minAmount != null
+                && maxAmount != null
+                && minAmount.compareTo(maxAmount) > 0) {
+
+            throw new InvalidTransactionException(
+                    "'minAmount' cannot be greater than 'maxAmount'"
             );
         }
     }

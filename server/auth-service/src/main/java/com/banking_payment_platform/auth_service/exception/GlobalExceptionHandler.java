@@ -157,6 +157,32 @@ public class GlobalExceptionHandler {
                 .body(response);
     }
 
+    /**
+     * A rejected password change: wrong current password, a new password that
+     * repeats the old one, or an admin resetting their own.
+     *
+     * 400 rather than 401 on purpose. The client treats a 401 on an
+     * authenticated route as an expired access token and responds by refreshing
+     * and replaying the request, signing the user out if that fails - so
+     * mistyping your current password would end your session. The message is
+     * written to be shown to the user who attempted it.
+     */
+    @ExceptionHandler(InvalidPasswordChangeException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidPasswordChange(
+            InvalidPasswordChangeException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        response.put("timestamp", LocalDateTime.now());
+        response.put("status", 400);
+        response.put("error", "Bad Request");
+        response.put("message", ex.getMessage());
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidCredentials(
             InvalidCredentialsException ex) {

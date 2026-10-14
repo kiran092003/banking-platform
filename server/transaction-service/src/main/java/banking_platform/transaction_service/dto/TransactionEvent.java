@@ -14,6 +14,13 @@ public record TransactionEvent(
 
         Long userId,
 
+        /**
+         * User who owns the receiving account, when that is somebody other
+         * than {@code userId}. Null for deposits, withdrawals and self
+         * transfers, where there is no second party to notify.
+         */
+        Long receiverUserId,
+
         Long senderAccountId,
 
         Long receiverAccountId,

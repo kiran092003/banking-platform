@@ -1,9 +1,10 @@
 import { Link } from 'react-router-dom';
-import { Bell, Menu, Search } from 'lucide-react';
+import { Bell, Menu } from 'lucide-react';
 import { useAppDispatch } from '@/app/hooks';
 import { mobileNavToggled } from '@/features/ui/uiSlice';
 import { useAuth } from '@/features/auth/useAuth';
 import { useUnreadNotificationCount } from '@/features/notifications/useNotifications';
+import { GlobalSearch } from './GlobalSearch';
 
 function initials(username: string | undefined): string {
   if (!username) return '–';
@@ -26,18 +27,7 @@ export function Header() {
         <Menu className="h-5 w-5" aria-hidden="true" />
       </button>
 
-      <div className="relative hidden max-w-xs flex-1 sm:block">
-        <Search
-          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
-          aria-hidden="true"
-        />
-        <input
-          type="search"
-          placeholder="Search transactions, accounts…"
-          aria-label="Search"
-          className="h-10 w-full rounded-base border border-outline bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-cobalt focus:ring-[3px] focus:ring-cobalt/15"
-        />
-      </div>
+      <GlobalSearch />
 
       <div className="ml-auto flex items-center gap-2">
         <Link

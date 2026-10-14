@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Receipt } from 'lucide-react';
+import { Eye, Receipt } from 'lucide-react';
+import { ColumnFilter } from '@/components/ui/ColumnFilter';
+import { RangeFilter, SelectFilter } from '@/components/ui/filterControls';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { TransactionStatusBadge } from '@/components/ui/Badge';
@@ -31,6 +33,18 @@ import type {
   TransactionType,
 } from '@/types/transaction';
 
+/** The ISO day after `day`, so an inclusive "to" can use an exclusive bound. */
+function nextDay(day: string): string {
+  const date = new Date(`${day}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 export default function TransactionsPage() {
   const navigate = useNavigate();
 
@@ -42,11 +56,40 @@ export default function TransactionsPage() {
   const [sortBy, setSortBy] = useState<TransactionSortField>('createdAt');
   const [direction, setDirection] = useState<SortDirection>('DESC');
 
+  /*
+   * Amount and date bounds, as typed. Kept as strings because that is what the
+   * inputs give; they are converted on the way into the query below, where a
+   * blank or unparseable box becomes "no bound" rather than a zero.
+   *
+   * This list is deliberately short. The history endpoint filters on type,
+   * status, createdAt and amount, and nothing else, so Sender and Receiver
+   * have no funnel: a filter there could only narrow the page on screen and
+   * would read as "no results" when the match is two pages away.
+   */
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
+
+  /** A blank or junk box means no bound, never 0. */
+  function toAmount(value: string): number | undefined {
+    if (value.trim() === '') return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+
   const query = useTransactions({
     page,
     size,
     status: status === 'ALL' ? undefined : status,
     transactionType: transactionType === 'ALL' ? undefined : transactionType,
+    minAmount: toAmount(minAmount),
+    maxAmount: toAmount(maxAmount),
+    // The backend takes ISO date-times. A date box gives a plain day, so the
+    // range runs from the start of `from` to the start of the day AFTER `to`,
+    // because createdAtBefore is exclusive and the day itself must be included.
+    from: createdFrom ? `${createdFrom}T00:00:00` : undefined,
+    to: createdTo ? `${nextDay(createdTo)}T00:00:00` : undefined,
     sortBy,
     direction,
   });
@@ -63,7 +106,23 @@ export default function TransactionsPage() {
 
   const data = query.data;
   const transactions = data?.transactions ?? [];
-  const isFiltered = status !== 'ALL' || transactionType !== 'ALL';
+  const isFiltered =
+    status !== 'ALL' ||
+    transactionType !== 'ALL' ||
+    minAmount !== '' ||
+    maxAmount !== '' ||
+    createdFrom !== '' ||
+    createdTo !== '';
+
+  function clearAllFilters() {
+    setStatus('ALL');
+    setTransactionType('ALL');
+    setMinAmount('');
+    setMaxAmount('');
+    setCreatedFrom('');
+    setCreatedTo('');
+    setPage(0);
+  }
 
   return (
     <>
@@ -77,47 +136,13 @@ export default function TransactionsPage() {
         }
       />
 
+      {/*
+        Status and type used to be selects here. They are column filters now,
+        so the funnel marks which column is narrowing the table.
+      */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <select
-          value={status}
-          onChange={(event) => {
-            setStatus(event.target.value as TransactionStatus | 'ALL');
-            setPage(0);
-          }}
-          aria-label="Filter by status"
-          className="h-10 rounded-base border border-outline bg-surface px-3 text-sm text-ink outline-none focus:border-cobalt focus:ring-[3px] focus:ring-cobalt/15"
-        >
-          <option value="ALL">All statuses</option>
-          <option value="SUCCESS">Success</option>
-          <option value="PENDING">Pending</option>
-          <option value="FAILED">Failed</option>
-        </select>
-
-        <select
-          value={transactionType}
-          onChange={(event) => {
-            setTransactionType(event.target.value as TransactionType | 'ALL');
-            setPage(0);
-          }}
-          aria-label="Filter by transaction type"
-          className="h-10 rounded-base border border-outline bg-surface px-3 text-sm text-ink outline-none focus:border-cobalt focus:ring-[3px] focus:ring-cobalt/15"
-        >
-          <option value="ALL">All types</option>
-          <option value="TRANSFER">Transfer</option>
-          <option value="DEPOSIT">Deposit</option>
-          <option value="WITHDRAWAL">Withdrawal</option>
-        </select>
-
         {isFiltered && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setStatus('ALL');
-              setTransactionType('ALL');
-              setPage(0);
-            }}
-          >
+          <Button variant="ghost" size="sm" onClick={clearAllFilters}>
             Clear filters
           </Button>
         )}
@@ -150,11 +175,7 @@ export default function TransactionsPage() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => {
-                    setStatus('ALL');
-                    setTransactionType('ALL');
-                    setPage(0);
-                  }}
+                  onClick={clearAllFilters}
                 >
                   Clear filters
                 </Button>
@@ -182,7 +203,37 @@ export default function TransactionsPage() {
                       isActive={sortBy === 'transactionType'}
                       direction={direction}
                       onSort={() => toggleSort('transactionType')}
+                      filter={
+                        <ColumnFilter
+                          label="Type"
+                          isActive={transactionType !== 'ALL'}
+                          onClear={() => {
+                            setTransactionType('ALL');
+                            setPage(0);
+                          }}
+                        >
+                          <SelectFilter
+                            label="Transaction type"
+                            allLabel="All types"
+                            options={[
+                              { value: 'TRANSFER', label: 'Transfer' },
+                              { value: 'DEPOSIT', label: 'Deposit' },
+                              { value: 'WITHDRAWAL', label: 'Withdrawal' },
+                            ]}
+                            value={transactionType === 'ALL' ? '' : transactionType}
+                            onChange={(value) => {
+                              setTransactionType((value || 'ALL') as TransactionType | 'ALL');
+                              setPage(0);
+                            }}
+                          />
+                        </ColumnFilter>
+                      }
                     />
+                    {/*
+                      No funnel on Sender or Receiver: the history endpoint has
+                      no parameter for either, so a filter here could only
+                      narrow the rows already on screen.
+                    */}
                     <Th>Sender</Th>
                     <Th>Receiver</Th>
                     <SortableTh
@@ -191,19 +242,97 @@ export default function TransactionsPage() {
                       isActive={sortBy === 'amount'}
                       direction={direction}
                       onSort={() => toggleSort('amount')}
+                      filter={
+                        <ColumnFilter
+                          label="Amount"
+                          isActive={minAmount !== '' || maxAmount !== ''}
+                          onClear={() => {
+                            setMinAmount('');
+                            setMaxAmount('');
+                            setPage(0);
+                          }}
+                        >
+                          <RangeFilter
+                            type="number"
+                            label="Amount"
+                            min={minAmount}
+                            max={maxAmount}
+                            onMinChange={(value) => {
+                              setMinAmount(value);
+                              setPage(0);
+                            }}
+                            onMaxChange={(value) => {
+                              setMaxAmount(value);
+                              setPage(0);
+                            }}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <SortableTh
                       label="Status"
                       isActive={sortBy === 'status'}
                       direction={direction}
                       onSort={() => toggleSort('status')}
+                      filter={
+                        <ColumnFilter
+                          label="Status"
+                          isActive={status !== 'ALL'}
+                          onClear={() => {
+                            setStatus('ALL');
+                            setPage(0);
+                          }}
+                        >
+                          <SelectFilter
+                            label="Transaction status"
+                            allLabel="All statuses"
+                            options={[
+                              { value: 'SUCCESS', label: 'Success' },
+                              { value: 'PENDING', label: 'Pending' },
+                              { value: 'FAILED', label: 'Failed' },
+                            ]}
+                            value={status === 'ALL' ? '' : status}
+                            onChange={(value) => {
+                              setStatus((value || 'ALL') as TransactionStatus | 'ALL');
+                              setPage(0);
+                            }}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <SortableTh
                       label="Created"
                       isActive={sortBy === 'createdAt'}
                       direction={direction}
                       onSort={() => toggleSort('createdAt')}
+                      filter={
+                        <ColumnFilter
+                          label="Created"
+                          isActive={createdFrom !== '' || createdTo !== ''}
+                          onClear={() => {
+                            setCreatedFrom('');
+                            setCreatedTo('');
+                            setPage(0);
+                          }}
+                        >
+                          <RangeFilter
+                            type="date"
+                            label="Created"
+                            min={createdFrom}
+                            max={createdTo}
+                            onMinChange={(value) => {
+                              setCreatedFrom(value);
+                              setPage(0);
+                            }}
+                            onMaxChange={(value) => {
+                              setCreatedTo(value);
+                              setPage(0);
+                            }}
+                          />
+                        </ColumnFilter>
+                      }
                     />
+                    <Th align="right">Actions</Th>
                   </Tr>
                 </Thead>
 
@@ -234,6 +363,17 @@ export default function TransactionsPage() {
                         <TransactionStatusBadge status={transaction.status} />
                       </Td>
                       <Td>{formatDateTime(transaction.createdAt)}</Td>
+                      <Td align="right">
+                        <Link
+                          to={`/transactions/${transaction.id}`}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-label={`View transaction ${transaction.id}`}
+                          title="View transaction"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-base text-ink-muted transition-colors hover:bg-surface-2 hover:text-cobalt"
+                        >
+                          <Eye className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                      </Td>
                     </Tr>
                   ))}
                 </Tbody>

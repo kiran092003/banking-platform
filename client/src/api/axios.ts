@@ -15,7 +15,7 @@ import { requestFinished, requestStarted } from '@/features/ui/loadingSlice';
 import type { LoginResponse } from '@/types/auth';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
-const TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT ?? 15_000);
+const TIMEOUT = Number(import.meta.env.VITE_API_TIMEOUT ?? 30_000);
 
 /** Public auth routes — never attach a token, never try to refresh these. */
 const AUTH_ROUTES = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/logout'];

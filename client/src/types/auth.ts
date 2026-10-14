@@ -33,6 +33,25 @@ export interface LoginRequest {
 }
 
 /**
+ * What the sign-in form submits: the credentials the backend wants, plus the
+ * Remember me choice, which never leaves the browser.
+ */
+export interface LoginFormSubmission extends LoginRequest {
+  remember: boolean;
+}
+
+/**
+ * POST /auth/password request — ChangePasswordDto.
+ *
+ * No username: the backend takes the account from the access token, so this
+ * can only change the caller's own password.
+ */
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+/**
  * POST /auth/login and POST /auth/refresh response — LoginResponseDto.
  * Note: carries no user identity. `userId`/`role` come from the access token.
  */
@@ -41,6 +60,14 @@ export interface LoginResponse {
   refreshToken: string;
   tokenType: string;
   expiresIn: number;
+}
+
+/**
+ * What `credentialsReceived` applies: a token pair, and on a sign-in the
+ * Remember me choice that decides which web storage holds it.
+ */
+export interface CredentialsReceivedPayload extends LoginResponse {
+  remember?: boolean;
 }
 
 /** POST /auth/refresh and POST /auth/logout request — RefreshTokenRequestDto */

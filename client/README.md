@@ -53,7 +53,7 @@ set `VITE_API_BASE_URL=http://localhost:8080`.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `VITE_API_BASE_URL` | `/api` | Base URL for every request |
-| `VITE_API_TIMEOUT` | `15000` | Axios timeout (ms) |
+| `VITE_API_TIMEOUT` | `30000` | Axios timeout (ms) |
 
 Vite also proxies `/ws` to the gateway with `ws: true`, so the notification
 WebSocket is same-origin for the browser.

@@ -52,7 +52,8 @@ public class SecurityConfig {
                                 "/accounts/internal/transfer",
                                 "/accounts/internal/deposit",
                                 "/accounts/internal/withdraw",
-                                "/accounts/internal/user/**"
+                                "/accounts/internal/user/**",
+                                "/accounts/internal/id/**"
                         ).hasRole("INTERNAL_SERVICE")
 
                         // =====================================

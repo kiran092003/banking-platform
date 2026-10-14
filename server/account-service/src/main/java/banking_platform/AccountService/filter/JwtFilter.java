@@ -29,7 +29,8 @@ public class JwtFilter extends OncePerRequestFilter {
         return path.equals("/accounts/internal/transfer")
                 || path.equals("/accounts/internal/deposit")
                 || path.equals("/accounts/internal/withdraw")
-                || path.startsWith("/accounts/internal/user/");
+                || path.startsWith("/accounts/internal/user/")
+                || path.startsWith("/accounts/internal/id/");
     }
 
     @Override

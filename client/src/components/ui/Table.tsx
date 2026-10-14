@@ -35,8 +35,14 @@ export function Thead({ className, ...props }: HTMLAttributes<HTMLTableSectionEl
 export function Th({
   className,
   align = 'left',
+  filter,
+  children,
   ...props
-}: ThHTMLAttributes<HTMLTableCellElement> & { align?: 'left' | 'right' }) {
+}: ThHTMLAttributes<HTMLTableCellElement> & {
+  align?: 'left' | 'right';
+  /** A <ColumnFilter> for this column. Omit for columns that cannot filter. */
+  filter?: ReactNode;
+}) {
   return (
     <th
       scope="col"
@@ -46,7 +52,21 @@ export function Th({
         className
       )}
       {...props}
-    />
+    >
+      {filter ? (
+        <span
+          className={cn(
+            'flex items-center',
+            align === 'right' && 'justify-end'
+          )}
+        >
+          {children}
+          {filter}
+        </span>
+      ) : (
+        children
+      )}
+    </th>
   );
 }
 
@@ -57,14 +77,40 @@ export function SortableTh({
   direction,
   onSort,
   align = 'left',
+  filter,
 }: {
   label: string;
   isActive: boolean;
   direction: 'ASC' | 'DESC';
   onSort: () => void;
   align?: 'left' | 'right';
+  /**
+   * A <ColumnFilter> for this column. It renders as a sibling of the sort
+   * button rather than inside it: a funnel button nested in the sort button
+   * would be invalid HTML and every click on it would also re-sort.
+   */
+  filter?: ReactNode;
 }) {
   const Icon = !isActive ? ChevronsUpDown : direction === 'ASC' ? ArrowUp : ArrowDown;
+
+  const sortButton = (
+    <button
+      type="button"
+      onClick={onSort}
+      className={cn(
+        'label-badge flex h-10 items-center gap-1.5 transition-colors hover:text-ink',
+        // Without a filter the button spans the cell, so the whole header is
+        // a sort target; with one it shrinks to leave the funnel its own
+        // hit area.
+        filter ? 'pl-4' : 'w-full px-4',
+        align === 'right' && (filter ? 'justify-end' : 'justify-end'),
+        isActive && 'text-ink'
+      )}
+    >
+      {label}
+      <Icon className="h-3 w-3" aria-hidden="true" />
+    </button>
+  );
 
   return (
     <Th
@@ -72,18 +118,19 @@ export function SortableTh({
       aria-sort={isActive ? (direction === 'ASC' ? 'ascending' : 'descending') : 'none'}
       className="p-0"
     >
-      <button
-        type="button"
-        onClick={onSort}
-        className={cn(
-          'label-badge flex h-10 w-full items-center gap-1.5 px-4 transition-colors hover:text-ink',
-          align === 'right' && 'justify-end',
-          isActive && 'text-ink'
-        )}
-      >
-        {label}
-        <Icon className="h-3 w-3" aria-hidden="true" />
-      </button>
+      {filter ? (
+        <span
+          className={cn(
+            'flex h-10 items-center pr-3',
+            align === 'right' && 'justify-end'
+          )}
+        >
+          {sortButton}
+          {filter}
+        </span>
+      ) : (
+        sortButton
+      )}
     </Th>
   );
 }

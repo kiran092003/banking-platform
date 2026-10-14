@@ -1,5 +1,5 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { AuthUser, LoginResponse } from '@/types/auth';
+import type { AuthUser, CredentialsReceivedPayload } from '@/types/auth';
 import { isTokenExpired, userFromAccessToken } from '@/utils/jwt';
 import {
   clearTokens,
@@ -47,9 +47,15 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    /** Applies a successful login or refresh response. */
-    credentialsReceived(state, action: PayloadAction<LoginResponse>) {
-      const { accessToken, refreshToken } = action.payload;
+    /**
+     * Applies a successful login or refresh response.
+     *
+     * `remember` is present only on a sign-in, where the user answered the
+     * question. Omitting it keeps the storage already in use, so the silent
+     * token refresh cannot turn a tab-scoped session into a remembered one.
+     */
+    credentialsReceived(state, action: PayloadAction<CredentialsReceivedPayload>) {
+      const { accessToken, refreshToken, remember } = action.payload;
       const user = userFromAccessToken(accessToken);
 
       state.accessToken = accessToken;
@@ -57,7 +63,7 @@ const authSlice = createSlice({
       state.user = user;
       state.isInitialized = true;
 
-      setTokens(accessToken, refreshToken);
+      setTokens(accessToken, refreshToken, remember);
     },
 
     /** Clears the session. Used by sign-out and by refresh failure. */

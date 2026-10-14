@@ -8,6 +8,8 @@ public record TransactionEvent(
         UUID eventId,
         Long transactionId,
         Long userId,
+        /** Owner of the receiving account, when that is a second user. */
+        Long receiverUserId,
         Long senderAccountId,
         Long receiverAccountId,
         BigDecimal amount,

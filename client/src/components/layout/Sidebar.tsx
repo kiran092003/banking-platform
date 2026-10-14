@@ -1,7 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import { Landmark, LogOut } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { useAuth, useLogout } from '@/features/auth/useAuth';
+import { useAppDispatch } from '@/app/hooks';
+import { signOutDialogSet } from '@/features/ui/uiSlice';
+import { useAuth } from '@/features/auth/useAuth';
 import { ADMIN_NAV, PRIMARY_NAV, visibleNavItems, type NavItem } from './navigation';
 
 function NavSection({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
@@ -33,7 +35,7 @@ function NavSection({ items, onNavigate }: { items: NavItem[]; onNavigate?: () =
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth();
-  const logout = useLogout();
+  const dispatch = useAppDispatch();
 
   const primary = visibleNavItems(PRIMARY_NAV, user?.role);
   const admin = visibleNavItems(ADMIN_NAV, user?.role);
@@ -65,12 +67,11 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <button
           type="button"
-          onClick={() => logout.mutate()}
-          disabled={logout.isPending}
-          className="flex w-full items-center gap-3 rounded-base px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-white disabled:opacity-60"
+          onClick={() => dispatch(signOutDialogSet(true))}
+          className="flex w-full items-center gap-3 rounded-base px-3 py-2 text-sm text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
         >
           <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
-          {logout.isPending ? 'Signing out…' : 'Sign out'}
+          Sign out
         </button>
       </div>
     </div>

@@ -23,14 +23,19 @@ export function formatAmount(value: number | null | undefined): string {
   return numberFormatter.format(value);
 }
 
+const HAS_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/;
+
 /**
  * Backend emits LocalDateTime without a timezone offset (e.g.
- * "2026-10-07T15:06:21.368"). `new Date()` treats that as local time, which is
- * what we want — the services and this browser share a clock.
+ * "2026-10-07T15:06:21.368"), and the services keep their clock in UTC.
+ * `new Date()` would read an offset-less string as browser-local time, which
+ * dates every timestamp by the viewer's UTC offset — a transfer made a moment
+ * ago reads as "6 hours ago" in IST. Appending `Z` says what the backend means
+ * so the browser renders it in the viewer's own zone.
  */
 function toDate(value: string | null | undefined): Date | null {
   if (!value) return null;
-  const date = new Date(value);
+  const date = new Date(HAS_OFFSET.test(value) ? value : `${value}Z`);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 

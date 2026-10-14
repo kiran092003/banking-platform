@@ -12,7 +12,7 @@ COPY . .
 # Vite inlines env vars at build time, so these are build args, not runtime env.
 # The default keeps the app same-origin and proxied by nginx (see nginx.conf).
 ARG VITE_API_BASE_URL=/api
-ARG VITE_API_TIMEOUT=15000
+ARG VITE_API_TIMEOUT=30000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 ENV VITE_API_TIMEOUT=$VITE_API_TIMEOUT
 
