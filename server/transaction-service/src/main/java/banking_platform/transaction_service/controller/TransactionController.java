@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @RestController
@@ -196,6 +197,16 @@ public class TransactionController {
             LocalDateTime to,
 
             @RequestParam(
+                    required = false
+            )
+            BigDecimal minAmount,
+
+            @RequestParam(
+                    required = false
+            )
+            BigDecimal maxAmount,
+
+            @RequestParam(
                     defaultValue = "createdAt"
             )
             String sortBy,
@@ -214,6 +225,8 @@ public class TransactionController {
                         transactionType,
                         from,
                         to,
+                        minAmount,
+                        maxAmount,
                         sortBy,
                         direction
                 );

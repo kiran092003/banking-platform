@@ -4,6 +4,8 @@ import { PageHeader } from '@/components/common/PageHeader';
 import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
+import { ColumnFilter } from '@/components/ui/ColumnFilter';
+import { SelectFilter, TextFilter } from '@/components/ui/filterControls';
 import { Select } from '@/components/ui/Select';
 import { RoleBadge } from '@/components/ui/Badge';
 import { MonoText } from '@/components/common/Money';
@@ -23,6 +25,7 @@ import {
   Tr,
 } from '@/components/ui/Table';
 import { useAuth } from '@/features/auth/useAuth';
+import { ResetPasswordDialog } from '@/features/users/ResetPasswordDialog';
 import { useUpdateUserRole, useUsers } from '@/features/users/useUsers';
 import { normalizeApiError } from '@/utils/errors';
 import type { Role } from '@/types/auth';
@@ -80,6 +83,12 @@ export default function AdminUsersPage() {
   const [target, setTarget] = useState<UserSummary | null>(null);
   const [pendingRole, setPendingRole] = useState<Role>('USER');
 
+  /*
+   * Separate from `target`, which belongs to the role dialog. One state per
+   * dialog keeps closing one from blanking the other's heading mid-animation.
+   */
+  const [resetTarget, setResetTarget] = useState<UserSummary | null>(null);
+
   const data = query.data;
   const rows = data?.users ?? [];
   const isFiltered = search.trim().length > 0 || roleFilter !== 'ALL';
@@ -114,6 +123,23 @@ export default function AdminUsersPage() {
     return user?.userId === row.id;
   }
 
+  /*
+   * Administrators are peers: neither their role nor their password may be
+   * changed by another administrator, so one compromised admin account cannot
+   * demote the others or take over their credentials. The backend is what
+   * enforces it; this only keeps the console from offering an action that is
+   * going to be refused.
+   */
+  function isPeerAdmin(row: UserSummary) {
+    return row.role === 'ADMIN' && !isSelf(row);
+  }
+
+  function unavailableReason(row: UserSummary) {
+    return isSelf(row)
+      ? 'Change your own password from Settings; your role is an admin task for someone else'
+      : 'Administrators cannot change another administrator';
+  }
+
   const dialogError = updateRole.isError ? normalizeApiError(updateRole.error) : null;
 
   return (
@@ -133,6 +159,11 @@ export default function AdminUsersPage() {
           The role is carried in the access token, so a promoted user gains admin access
           when their token next refreshes — within 15 minutes, or immediately if they sign
           out and back in.
+        </p>
+        <p className="mt-2">
+          Administrators are peers: once a user is an <MonoText>ADMIN</MonoText>, no other
+          administrator can change their role or reset their password. Promote deliberately
+          — undoing it is a database operation, not a change you can make here.
         </p>
       </Alert>
 
@@ -219,10 +250,65 @@ export default function AdminUsersPage() {
               <Table>
                 <Thead>
                   <Tr className="h-10">
-                    <Th>Username</Th>
+                    {/*
+                      The directory is paged server-side, so these funnels drive
+                      the real query parameters: `search` and `role`. `search`
+                      matches username OR email in one go, which is why it hangs
+                      off this column and Email has no funnel of its own — two
+                      controls writing one parameter would fight each other.
+                    */}
+                    <Th
+                      filter={
+                        <ColumnFilter
+                          label="Username"
+                          isActive={searchInput !== ''}
+                          onClear={() => setSearchInput('')}
+                        >
+                          <TextFilter
+                            label="Username or email contains"
+                            placeholder="Name or email"
+                            value={searchInput}
+                            onChange={setSearchInput}
+                          />
+                          <p className="mt-2 text-[12px] leading-[16px] text-ink-muted">
+                            Matches username and email.
+                          </p>
+                        </ColumnFilter>
+                      }
+                    >
+                      Username
+                    </Th>
                     <Th>Email</Th>
                     <Th>User ID</Th>
-                    <Th>Role</Th>
+                    <Th
+                      filter={
+                        <ColumnFilter
+                          label="Role"
+                          isActive={roleFilter !== 'ALL'}
+                          onClear={() => {
+                            setRoleFilter('ALL');
+                            setPage(0);
+                          }}
+                        >
+                          <SelectFilter
+                            label="Role"
+                            allLabel="All roles"
+                            options={[
+                              { value: 'USER', label: 'User' },
+                              { value: 'ADMIN', label: 'Admin' },
+                              { value: 'SUPPORT', label: 'Support' },
+                            ]}
+                            value={roleFilter === 'ALL' ? '' : roleFilter}
+                            onChange={(value) => {
+                              setRoleFilter((value || 'ALL') as Role | 'ALL');
+                              setPage(0);
+                            }}
+                          />
+                        </ColumnFilter>
+                      }
+                    >
+                      Role
+                    </Th>
                     <Th align="right">Actions</Th>
                   </Tr>
                 </Thead>
@@ -244,21 +330,30 @@ export default function AdminUsersPage() {
                         <RoleBadge role={row.role} />
                       </Td>
                       <Td align="right">
-                        {isSelf(row) ? (
+                        {isSelf(row) || isPeerAdmin(row) ? (
                           <span
                             className="text-[13px] text-ink-subtle"
-                            title="You cannot change your own role"
+                            title={unavailableReason(row)}
                           >
                             Not available
                           </span>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => openRoleDialog(row)}
-                            className="text-[13px] font-medium text-cobalt hover:underline"
-                          >
-                            Change role
-                          </button>
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              onClick={() => openRoleDialog(row)}
+                              className="text-[13px] font-medium text-cobalt hover:underline"
+                            >
+                              Change role
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setResetTarget(row)}
+                              className="text-[13px] font-medium text-cobalt hover:underline"
+                            >
+                              Reset password
+                            </button>
+                          </div>
                         )}
                       </Td>
                     </Tr>
@@ -286,15 +381,23 @@ export default function AdminUsersPage() {
                     <RoleBadge role={row.role} />
                   </div>
 
-                  {!isSelf(row) && (
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="mt-3"
-                      onClick={() => openRoleDialog(row)}
-                    >
-                      Change role
-                    </Button>
+                  {!isSelf(row) && !isPeerAdmin(row) && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => openRoleDialog(row)}
+                      >
+                        Change role
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setResetTarget(row)}
+                      >
+                        Reset password
+                      </Button>
+                    </div>
                   )}
                 </MobileCardRow>
               ))}
@@ -360,21 +463,25 @@ export default function AdminUsersPage() {
               <span className="flex items-start gap-1.5">
                 <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 An administrator can read every account, open and close accounts, and
-                promote other users to administrator.
+                promote other users to administrator. You will not be able to undo this:
+                administrators cannot change one another{"'"}s role.
               </span>
-            </Alert>
-          )}
-
-          {target?.role === 'ADMIN' && pendingRole !== 'ADMIN' && (
-            <Alert tone="warning" title="This removes administrative access">
-              They lose the admin console when their access token next refreshes. The
-              backend refuses this if they are the last remaining administrator.
             </Alert>
           )}
 
           {dialogError && <Alert tone="error">{dialogError.message}</Alert>}
         </div>
       </Modal>
+
+      {/*
+        Keyed on the target so each reset starts from an empty form: without it
+        the dialog would keep the previous user's typing and error state.
+      */}
+      <ResetPasswordDialog
+        key={resetTarget?.id ?? 'none'}
+        user={resetTarget}
+        onClose={() => setResetTarget(null)}
+      />
     </>
   );
 }

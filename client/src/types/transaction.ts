@@ -67,6 +67,9 @@ export interface TransactionHistoryParams {
   transactionType?: TransactionType;
   from?: string;
   to?: string;
+  /** Inclusive amount bounds. Both optional, for an open-ended range. */
+  minAmount?: number;
+  maxAmount?: number;
   sortBy?: TransactionSortField;
   direction?: SortDirection;
 }

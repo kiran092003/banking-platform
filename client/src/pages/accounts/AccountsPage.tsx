@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Search, Wallet } from 'lucide-react';
+import { Eye, Plus, Search, Wallet } from 'lucide-react';
 import { PageHeader } from '@/components/common/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { AccountStatusBadge } from '@/components/ui/Badge';
@@ -21,11 +21,21 @@ import {
   Tr,
 } from '@/components/ui/Table';
 import { useAuth } from '@/features/auth/useAuth';
+import { ColumnFilter } from '@/components/ui/ColumnFilter';
+import {
+  RangeFilter,
+  SelectFilter,
+  TextFilter,
+} from '@/components/ui/filterControls';
 import { useAccounts, useMyAccount } from '@/features/accounts/useAccounts';
-import { useAccountTable } from '@/features/accounts/useAccountTable';
+import {
+  ACCOUNT_STATUS_OPTIONS,
+  ACCOUNT_TYPE_OPTIONS,
+  useAccountTable,
+} from '@/features/accounts/useAccountTable';
 import { formatAccountNumber, formatDate } from '@/utils/format';
 import { normalizeApiError } from '@/utils/errors';
-import type { Account, AccountStatus, AccountType } from '@/types/account';
+import type { Account } from '@/types/account';
 
 export default function AccountsPage() {
   const navigate = useNavigate();
@@ -93,28 +103,17 @@ export default function AccountsPage() {
           />
         </div>
 
-        <select
-          value={table.statusFilter}
-          onChange={(event) => table.setStatusFilter(event.target.value as AccountStatus | 'ALL')}
-          aria-label="Filter by status"
-          className="h-10 rounded-base border border-outline bg-surface px-3 text-sm text-ink outline-none focus:border-cobalt focus:ring-[3px] focus:ring-cobalt/15"
-        >
-          <option value="ALL">All statuses</option>
-          <option value="ACTIVE">Active</option>
-          <option value="BLOCKED">Blocked</option>
-          <option value="CLOSED">Closed</option>
-        </select>
-
-        <select
-          value={table.typeFilter}
-          onChange={(event) => table.setTypeFilter(event.target.value as AccountType | 'ALL')}
-          aria-label="Filter by account type"
-          className="h-10 rounded-base border border-outline bg-surface px-3 text-sm text-ink outline-none focus:border-cobalt focus:ring-[3px] focus:ring-cobalt/15"
-        >
-          <option value="ALL">All types</option>
-          <option value="SAVINGS">Savings</option>
-          <option value="CURRENT">Current</option>
-        </select>
+        {/*
+          Status and type used to sit here as standalone selects. They now live
+          in their own column headers, where the funnel shows which column is
+          narrowing the table. This box stays: it searches across the three
+          identifying columns at once, which no single column filter does.
+        */}
+        {table.isFiltered && (
+          <Button variant="secondary" size="sm" onClick={table.resetFilters}>
+            Clear filters
+          </Button>
+        )}
       </div>
 
       <TableFrame>
@@ -141,15 +140,7 @@ export default function AccountsPage() {
             }
             action={
               table.isFiltered ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    table.setSearch('');
-                    table.setStatusFilter('ALL');
-                    table.setTypeFilter('ALL');
-                  }}
-                >
+                <Button variant="secondary" size="sm" onClick={table.resetFilters}>
                   Clear filters
                 </Button>
               ) : undefined
@@ -167,32 +158,131 @@ export default function AccountsPage() {
                       isActive={table.sortBy === 'accountNumber'}
                       direction={table.direction}
                       onSort={() => table.toggleSort('accountNumber')}
+                      filter={
+                        <ColumnFilter
+                          label="Account number"
+                          isActive={table.filters.accountNumber !== ''}
+                          onClear={() => table.clearFilters(['accountNumber'])}
+                        >
+                          <TextFilter
+                            label="Account number contains"
+                            placeholder="e.g. 4949"
+                            value={table.filters.accountNumber}
+                            onChange={(value) => table.setFilter('accountNumber', value)}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <SortableTh
                       label="Type"
                       isActive={table.sortBy === 'accountType'}
                       direction={table.direction}
                       onSort={() => table.toggleSort('accountType')}
+                      filter={
+                        <ColumnFilter
+                          label="Type"
+                          isActive={table.filters.accountType !== ''}
+                          onClear={() => table.clearFilters(['accountType'])}
+                        >
+                          <SelectFilter
+                            label="Account type"
+                            allLabel="All types"
+                            options={ACCOUNT_TYPE_OPTIONS}
+                            value={table.filters.accountType}
+                            onChange={(value) => table.setFilter('accountType', value)}
+                          />
+                        </ColumnFilter>
+                      }
                     />
-                    {isAdmin && <Th>User ID</Th>}
+                    {isAdmin && (
+                      <Th
+                        filter={
+                          <ColumnFilter
+                            label="User ID"
+                            isActive={table.filters.userId !== ''}
+                            onClear={() => table.clearFilters(['userId'])}
+                          >
+                            <TextFilter
+                              label="User ID contains"
+                              placeholder="e.g. 3"
+                              value={table.filters.userId}
+                              onChange={(value) => table.setFilter('userId', value)}
+                            />
+                          </ColumnFilter>
+                        }
+                      >
+                        User ID
+                      </Th>
+                    )}
                     <SortableTh
                       label="Balance"
                       align="right"
                       isActive={table.sortBy === 'balance'}
                       direction={table.direction}
                       onSort={() => table.toggleSort('balance')}
+                      filter={
+                        <ColumnFilter
+                          label="Balance"
+                          isActive={
+                            table.filters.balanceMin !== '' || table.filters.balanceMax !== ''
+                          }
+                          onClear={() => table.clearFilters(['balanceMin', 'balanceMax'])}
+                        >
+                          <RangeFilter
+                            type="number"
+                            label="Balance"
+                            min={table.filters.balanceMin}
+                            max={table.filters.balanceMax}
+                            onMinChange={(value) => table.setFilter('balanceMin', value)}
+                            onMaxChange={(value) => table.setFilter('balanceMax', value)}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <SortableTh
                       label="Status"
                       isActive={table.sortBy === 'status'}
                       direction={table.direction}
                       onSort={() => table.toggleSort('status')}
+                      filter={
+                        <ColumnFilter
+                          label="Status"
+                          isActive={table.filters.status !== ''}
+                          onClear={() => table.clearFilters(['status'])}
+                        >
+                          <SelectFilter
+                            label="Account status"
+                            allLabel="All statuses"
+                            options={ACCOUNT_STATUS_OPTIONS}
+                            value={table.filters.status}
+                            onChange={(value) => table.setFilter('status', value)}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <SortableTh
                       label="Created"
                       isActive={table.sortBy === 'createdAt'}
                       direction={table.direction}
                       onSort={() => table.toggleSort('createdAt')}
+                      filter={
+                        <ColumnFilter
+                          label="Created"
+                          isActive={
+                            table.filters.createdFrom !== '' || table.filters.createdTo !== ''
+                          }
+                          onClear={() => table.clearFilters(['createdFrom', 'createdTo'])}
+                        >
+                          <RangeFilter
+                            type="date"
+                            label="Created"
+                            min={table.filters.createdFrom}
+                            max={table.filters.createdTo}
+                            onMinChange={(value) => table.setFilter('createdFrom', value)}
+                            onMaxChange={(value) => table.setFilter('createdTo', value)}
+                          />
+                        </ColumnFilter>
+                      }
                     />
                     <Th align="right">Actions</Th>
                   </Tr>
@@ -223,9 +313,11 @@ export default function AccountsPage() {
                         <Link
                           to={`/accounts/${account.id}`}
                           onClick={(event) => event.stopPropagation()}
-                          className="text-[13px] font-medium text-cobalt hover:underline"
+                          aria-label={`View account ${formatAccountNumber(account.accountNumber)}`}
+                          title="View account"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-base text-ink-muted transition-colors hover:bg-surface-2 hover:text-cobalt"
                         >
-                          View
+                          <Eye className="h-4 w-4" aria-hidden="true" />
                         </Link>
                       </Td>
                     </Tr>
