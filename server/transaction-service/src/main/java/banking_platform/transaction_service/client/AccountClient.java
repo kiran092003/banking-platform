@@ -315,6 +315,68 @@ public class AccountClient {
 
 
     // =========================================================
+    // GET ACCOUNT BY ACCOUNT ID
+    // =========================================================
+    @Retry(name = "accountLookupRetry")
+    public AccountDetailsResponse getAccountById(Long accountId) {
+
+        return executeAccountRequest(() ->
+                accountRestClient
+                        .get()
+                        .uri(
+                                "/accounts/internal/id/{accountId}",
+                                accountId
+                        )
+                        .header(
+                                "X-Internal-Service-Key",
+                                internalServiceKey
+                        )
+                        .retrieve()
+
+                        .onStatus(
+                                status -> status.value() == 404,
+                                (httpRequest, clientResponse) -> {
+                                    throw new AccountNotFoundException(
+                                            "Account not found with id: "
+                                                    + accountId
+                                    );
+                                }
+                        )
+
+                        .onStatus(
+                                status -> status.value() == 401
+                                        || status.value() == 403,
+                                (httpRequest, clientResponse) -> {
+                                    throw new InvalidTransactionException(
+                                            "Transaction Service is not authorized"
+                                    );
+                                }
+                        )
+
+                        .onStatus(
+                                HttpStatusCode::is4xxClientError,
+                                (httpRequest, clientResponse) -> {
+                                    throw new InvalidTransactionException(
+                                            "Account lookup was rejected"
+                                    );
+                                }
+                        )
+
+                        .onStatus(
+                                HttpStatusCode::is5xxServerError,
+                                (httpRequest, clientResponse) -> {
+                                    throw new AccountServiceUnavailableException(
+                                            "Account Service returned a server error"
+                                    );
+                                }
+                        )
+
+                        .body(AccountDetailsResponse.class)
+        );
+    }
+
+
+    // =========================================================
     // COMMON ACCOUNT REQUEST EXECUTOR
     // =========================================================
 

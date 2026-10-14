@@ -46,7 +46,8 @@ public class InternalServiceFilter extends OncePerRequestFilter {
                 requestUri.equals("/accounts/internal/transfer")
                         || requestUri.equals("/accounts/internal/deposit")
                         || requestUri.equals("/accounts/internal/withdraw")
-                        || requestUri.startsWith("/accounts/internal/user/");
+                        || requestUri.startsWith("/accounts/internal/user/")
+                        || requestUri.startsWith("/accounts/internal/id/");
 
         if (!internalEndpoint) {
             filterChain.doFilter(request, response);

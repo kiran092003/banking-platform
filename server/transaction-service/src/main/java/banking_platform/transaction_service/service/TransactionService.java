@@ -9,6 +9,7 @@ import banking_platform.transaction_service.dto.TransactionEvent;
 import banking_platform.transaction_service.dto.TransactionResponse;
 import banking_platform.transaction_service.entity.Transaction;
 import banking_platform.transaction_service.entity.TransactionStatus;
+import banking_platform.transaction_service.entity.TransactionType;
 import banking_platform.transaction_service.exception.InvalidTransactionException;
 import banking_platform.transaction_service.exception.TransactionNotFoundException;
 import banking_platform.transaction_service.repository.TransactionRepository;
@@ -343,6 +344,11 @@ public class TransactionService {
                         UUID.randomUUID(),
                         transactionId,
                         transaction.getUserId(),
+                        resolveReceiverUserId(
+                                transaction,
+                                userId,
+                                transactionId
+                        ),
                         transaction.getSenderAccountId(),
                         transaction.getReceiverAccountId(),
                         transaction.getAmount(),
@@ -605,6 +611,63 @@ public class TransactionService {
                     );
                 }
             }
+        }
+    }
+
+
+    /**
+     * Finds the user on the receiving end of a transfer, so that the
+     * notification pipeline can inform them as well as the sender.
+     *
+     * Returns null when there is no second party: deposits and withdrawals
+     * only touch the caller's own account, and a transfer between two accounts
+     * of the same user needs a single notification.
+     *
+     * The money has already moved by the time this runs, so a lookup failure
+     * must never fail the transaction. It costs the counterparty their
+     * notification and nothing else, which is why the exception is swallowed
+     * after logging.
+     */
+    private Long resolveReceiverUserId(
+            Transaction transaction,
+            Long senderUserId,
+            Long transactionId
+    ) {
+
+        if (transaction.getTransactionType() != TransactionType.TRANSFER
+                || transaction.getReceiverAccountId() == null) {
+
+            return null;
+        }
+
+        try {
+
+            AccountDetailsResponse receiverAccount =
+                    accountClient.getAccountById(
+                            transaction.getReceiverAccountId()
+                    );
+
+            if (receiverAccount == null
+                    || receiverAccount.userId() == null
+                    || receiverAccount.userId().equals(senderUserId)) {
+
+                return null;
+            }
+
+            return receiverAccount.userId();
+
+        } catch (RuntimeException exception) {
+
+            log.warn(
+                    "Could not resolve the receiving account's owner. " +
+                            "Only the sender will be notified. " +
+                            "transactionId={}, receiverAccountId={}, error={}",
+                    transactionId,
+                    transaction.getReceiverAccountId(),
+                    exception.getMessage()
+            );
+
+            return null;
         }
     }
 

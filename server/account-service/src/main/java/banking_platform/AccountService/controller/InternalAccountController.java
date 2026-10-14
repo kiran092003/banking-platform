@@ -61,4 +61,19 @@ public class InternalAccountController {
                 accountService.getAccountByUserId(userId)
         );
     }
+
+    /*
+     * Account by its own id.
+     *
+     * Transaction Service uses this to find out which user owns the receiving
+     * account, so that the counterparty can be notified too.
+     */
+    @GetMapping("/id/{accountId}")
+    public ResponseEntity<AccountResponseDTO> getAccountById(
+            @PathVariable Long accountId
+    ) {
+        return ResponseEntity.ok(
+                accountService.getAccountById(accountId)
+        );
+    }
 }
